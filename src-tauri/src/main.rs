@@ -72,6 +72,7 @@ fn to_note(entry: &Path) -> Option<Note> {
 
 #[tauri::command]
 fn ensure_demo_data(app: AppHandle) -> Result<(), String> {
+    println!("[tauri] ensure_demo_data");
     let root = ensure_root(&app)?;
     let notebook_dir = root.join("Sample Notebook");
     let note_dir = notebook_dir.join("Welcome");
@@ -94,6 +95,7 @@ fn ensure_demo_data(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn list_notebooks(app: AppHandle) -> Result<Vec<Notebook>, String> {
+    println!("[tauri] list_notebooks");
     let root = ensure_root(&app)?;
     let mut notebooks = Vec::new();
     for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
@@ -110,6 +112,7 @@ fn list_notebooks(app: AppHandle) -> Result<Vec<Notebook>, String> {
 
 #[tauri::command]
 fn list_notes(_app: AppHandle, notebook_path: String) -> Result<Vec<Note>, String> {
+    println!("[tauri] list_notes for {}", notebook_path);
     let mut notes = Vec::new();
     let path = PathBuf::from(notebook_path);
     for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
@@ -126,6 +129,7 @@ fn list_notes(_app: AppHandle, notebook_path: String) -> Result<Vec<Note>, Strin
 
 #[tauri::command]
 fn read_note(_app: AppHandle, note_path: String) -> Result<String, String> {
+    println!("[tauri] read_note {}", note_path);
     let path = PathBuf::from(note_path).join("note.md");
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let mut content = String::new();
@@ -135,6 +139,7 @@ fn read_note(_app: AppHandle, note_path: String) -> Result<String, String> {
 
 #[tauri::command]
 fn save_note(_app: AppHandle, note_path: String, content: String) -> Result<(), String> {
+    println!("[tauri] save_note {}", note_path);
     let path = PathBuf::from(note_path).join("note.md");
     let mut file = File::create(path).map_err(|e| e.to_string())?;
     file.write_all(content.as_bytes())
@@ -144,6 +149,7 @@ fn save_note(_app: AppHandle, note_path: String, content: String) -> Result<(), 
 
 #[tauri::command]
 fn create_notebook(app: AppHandle, name: String) -> Result<Notebook, String> {
+    println!("[tauri] create_notebook {}", name);
     let root = ensure_root(&app)?;
     let dir_name = sanitize_name(&name);
     let dir_path = root.join(dir_name);
@@ -153,6 +159,7 @@ fn create_notebook(app: AppHandle, name: String) -> Result<Notebook, String> {
 
 #[tauri::command]
 fn create_note(_app: AppHandle, notebook_path: String, name: String) -> Result<Note, String> {
+    println!("[tauri] create_note {} in {}", name, notebook_path);
     let dir_name = sanitize_name(&name);
     let note_dir = PathBuf::from(notebook_path).join(dir_name);
     fs::create_dir_all(&note_dir).map_err(|e| e.to_string())?;
@@ -168,6 +175,7 @@ fn create_note(_app: AppHandle, notebook_path: String, name: String) -> Result<N
 
 #[tauri::command]
 fn save_image(_app: AppHandle, note_path: String, file_name: String, data: Vec<u8>) -> Result<String, String> {
+    println!("[tauri] save_image {} in {}", file_name, note_path);
     let dir = PathBuf::from(note_path).join("images");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let safe_name = Path::new(&file_name)

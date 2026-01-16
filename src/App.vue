@@ -14,6 +14,16 @@ const notebooks = computed(() => store.notebooks);
 const notes = computed(() => store.notes);
 const activeNotebook = computed(() => store.activeNotebook);
 const activeNote = computed(() => store.activeNote);
+
+const handleSelectNotebook = (item: any) => {
+  console.info('[ui] click notebook', item.path);
+  store.selectNotebook(item);
+};
+
+const handleSelectNote = (item: any) => {
+  console.info('[ui] click note', item.path);
+  store.selectNote(item);
+};
 </script>
 
 <template>
@@ -36,7 +46,7 @@ const activeNote = computed(() => store.activeNote);
             v-for="item in notebooks"
             :key="item.path"
             :class="{ active: activeNotebook?.path === item.path }"
-            @click="store.selectNotebook(item)"
+            @click="handleSelectNotebook(item)"
           >
             {{ item.name }}
           </li>
@@ -52,14 +62,14 @@ const activeNote = computed(() => store.activeNote);
             v-for="item in notes"
             :key="item.path"
             :class="{ active: activeNote?.path === item.path }"
-            @click="store.selectNote(item)"
+            @click="handleSelectNote(item)"
           >
             {{ item.name }}
           </li>
         </ul>
       </section>
       <section class="panel editor">
-        <MilkdownProvider v-if="activeNote">
+        <MilkdownProvider v-if="activeNote" :key="activeNote.path">
           <Editor
             :key="activeNote.path"
             :model-value="store.currentContent"

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { onMounted, ref } from 'vue';
 import { Milkdown, useEditor } from '@milkdown/vue';
 import { Editor, defaultValueCtx, editorViewCtx, rootCtx, schemaCtx } from '@milkdown/core';
-import { replaceAll } from '@milkdown/utils';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { nord } from '@milkdown/theme-nord';
@@ -36,20 +35,13 @@ const { editor, get } = useEditor((root) => {
     .use(listener);
 });
 
-const syncContent = (val: string) => {
-  get()?.action(replaceAll(val ?? ''));
-};
-
 onMounted(() => {
-  syncContent(props.modelValue ?? '');
+  console.info('[editor] mounted');
+  get()?.action((ctx) => {
+    const view = ctx.get(editorViewCtx);
+    view.focus();
+  });
 });
-
-watch(
-  () => props.notePath,
-  () => {
-    syncContent(props.modelValue ?? '');
-  }
-);
 
 const openFilePicker = () => {
   fileInput.value?.click();
@@ -59,6 +51,7 @@ const onFileChange = async (event: Event) => {
   const target = event.target as HTMLInputElement;
   const file = target.files?.[0];
   if (!file) return;
+  console.info('[editor] onFileChange', file.name);
   const src = await store.saveImage(file);
   target.value = '';
   if (!src) return;

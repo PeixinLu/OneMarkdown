@@ -40,6 +40,7 @@ export const useNoteStore = defineStore('note', {
   actions: {
     async bootstrap() {
       if (!isTauri) {
+        console.info('[store] bootstrap in web mode');
         // Web fallback: 提供内存示例，避免 __TAURI_IPC__ 报错
         const notebook: Notebook = { name: 'Web Demo', path: '/web/demo' };
         const note: Note = { name: 'Welcome', path: '/web/demo/welcome' };
@@ -50,20 +51,24 @@ export const useNoteStore = defineStore('note', {
         this.currentContent = WEB_SAMPLE_NOTE;
         return;
       }
+      console.info('[store] bootstrap in tauri mode');
       await invoke('ensure_demo_data');
       await this.loadNotebooks();
     },
     async loadNotebooks() {
+      console.info('[store] loadNotebooks');
       this.notebooks = await invoke<Notebook[]>('list_notebooks');
       if (this.notebooks.length) {
         await this.selectNotebook(this.notebooks[0]);
       }
     },
     async selectNotebook(notebook: Notebook) {
+      console.info('[store] selectNotebook', notebook.path);
       this.activeNotebook = notebook;
       await this.loadNotes(notebook.path);
     },
     async loadNotes(notebookPath: string) {
+      console.info('[store] loadNotes for', notebookPath);
       this.notes = await invoke<Note[]>('list_notes', { notebookPath });
       if (this.notes.length) {
         await this.selectNote(this.notes[0]);
@@ -73,6 +78,7 @@ export const useNoteStore = defineStore('note', {
       }
     },
     async selectNote(note: Note) {
+      console.info('[store] selectNote', note.path);
       this.activeNote = note;
       if (!isTauri) {
         this.currentContent = WEB_SAMPLE_NOTE;
@@ -82,6 +88,7 @@ export const useNoteStore = defineStore('note', {
       this.currentContent = this.toDisplayMarkdown(content, note.path);
     },
     async updateContent(markdown: string) {
+      console.info('[store] updateContent length', markdown?.length ?? 0);
       if (!this.activeNote) return;
       this.currentContent = markdown;
       if (!isTauri) return;
@@ -92,6 +99,7 @@ export const useNoteStore = defineStore('note', {
       });
     },
     async createNotebook() {
+      console.info('[store] createNotebook');
       const name = `Notebook-${this.notebooks.length + 1}`;
       if (!isTauri) {
         const notebook: Notebook = { name, path: `/web/${name}` };
@@ -105,6 +113,7 @@ export const useNoteStore = defineStore('note', {
     },
     async createNote() {
       if (!this.activeNotebook) return;
+      console.info('[store] createNote');
       const name = `Note-${this.notes.length + 1}`;
       if (!isTauri) {
         const note: Note = { name, path: `${this.activeNotebook.path}/${name}` };
@@ -121,6 +130,7 @@ export const useNoteStore = defineStore('note', {
     },
     async saveImage(file: File) {
       if (!this.activeNote) return '';
+      console.info('[store] saveImage', file.name);
       if (!isTauri) {
         // Web 模式暂不支持文件写入
         return '';
