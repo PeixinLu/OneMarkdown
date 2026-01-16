@@ -103,9 +103,7 @@ export const useNoteStore = defineStore('note', {
       this.currentContent = markdown;
       if (!isTauri) return;
       const notePath = this.activeNote.path;
-      saveScheduler.schedule(notePath, markdown, (md, path) =>
-        toRelativeMarkdown(md, path, true)
-      );
+      saveScheduler.schedule(notePath, markdown, (md, path) => toRelativeMarkdown(md, path, true));
     },
     async createNotebook() {
       console.info('[store] createNotebook');

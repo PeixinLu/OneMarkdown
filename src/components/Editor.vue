@@ -66,7 +66,7 @@ watch(
       const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content);
       view.dispatch(tr);
     });
-  }
+  },
 );
 
 const openFilePicker = () => {

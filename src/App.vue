@@ -177,7 +177,14 @@ const handleKeydown = (event: KeyboardEvent) => {
       <section class="panel notes">
         <div class="panel-title">
           <span>Notes</span>
-          <button class="ghost" :disabled="!activeNotebook" @click="store.createNote()" title="新建笔记">+</button>
+          <button
+            class="ghost"
+            :disabled="!activeNotebook"
+            @click="store.createNote()"
+            title="新建笔记"
+          >
+            +
+          </button>
         </div>
         <ul class="list">
           <li
@@ -214,9 +221,7 @@ const handleKeydown = (event: KeyboardEvent) => {
             @update:modelValue="store.updateContent"
           />
         </MilkdownProvider>
-        <div v-else class="empty-state">
-          请选择笔记开始编辑
-        </div>
+        <div v-else class="empty-state">请选择笔记开始编辑</div>
       </section>
     </main>
     <div

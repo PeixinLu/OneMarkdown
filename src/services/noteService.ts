@@ -46,7 +46,7 @@ export const toRelativeMarkdown = (markdown: string, notePath: string, isTauri: 
 
 export const createDebouncedSave = (
   delayMs: number,
-  saveFn: (notePath: string, content: string) => Promise<void>
+  saveFn: (notePath: string, content: string) => Promise<void>,
 ) => {
   let timer: number | null = null;
   return {
