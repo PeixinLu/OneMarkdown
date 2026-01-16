@@ -191,6 +191,52 @@ fn save_image(_app: AppHandle, note_path: String, file_name: String, data: Vec<u
     Ok(relative)
 }
 
+#[tauri::command]
+fn delete_note(_app: AppHandle, note_path: String) -> Result<(), String> {
+    println!("[tauri] delete_note {}", note_path);
+    let path = PathBuf::from(note_path);
+    if path.exists() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_notebook(_app: AppHandle, notebook_path: String) -> Result<(), String> {
+    println!("[tauri] delete_notebook {}", notebook_path);
+    let path = PathBuf::from(notebook_path);
+    if path.exists() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_notebook(_app: AppHandle, notebook_path: String, name: String) -> Result<Notebook, String> {
+    println!("[tauri] rename_notebook {} -> {}", notebook_path, name);
+    let target_name = sanitize_name(&name);
+    let source = PathBuf::from(notebook_path);
+    let target = source
+        .parent()
+        .ok_or("invalid notebook path")?
+        .join(target_name);
+    fs::rename(&source, &target).map_err(|e| e.to_string())?;
+    Ok(to_notebook(&target).unwrap())
+}
+
+#[tauri::command]
+fn rename_note(_app: AppHandle, note_path: String, name: String) -> Result<Note, String> {
+    println!("[tauri] rename_note {} -> {}", note_path, name);
+    let target_name = sanitize_name(&name);
+    let source = PathBuf::from(note_path);
+    let target = source
+        .parent()
+        .ok_or("invalid note path")?
+        .join(target_name);
+    fs::rename(&source, &target).map_err(|e| e.to_string())?;
+    Ok(to_note(&target).unwrap())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -201,7 +247,11 @@ fn main() {
             save_note,
             create_notebook,
             create_note,
-            save_image
+            save_image,
+            delete_note,
+            delete_notebook,
+            rename_notebook,
+            rename_note
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
