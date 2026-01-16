@@ -1,11 +1,7 @@
 import { defineStore } from 'pinia';
 import { platformApi, isTauri, type Note, type Notebook } from '../services/platformAdapter';
-import {
-  createDebouncedSave,
-  createWebDemoData,
-  toDisplayMarkdown,
-  toRelativeMarkdown,
-} from '../services/noteService';
+import { createWebDemoData } from '../services/noteService';
+import { Vault } from '../services/vault/Vault';
 
 interface State {
   notebooks: Notebook[];
@@ -15,8 +11,7 @@ interface State {
   currentContent: string;
 }
 
-const SAVE_DEBOUNCE_MS = 500;
-const saveScheduler = createDebouncedSave(SAVE_DEBOUNCE_MS, platformApi.saveNote);
+const vault = new Vault();
 
 export const useNoteStore = defineStore('note', {
   state: (): State => ({
@@ -34,8 +29,7 @@ export const useNoteStore = defineStore('note', {
         this.notebooks = [demo.notebook];
         this.notes = [demo.note];
         this.activeNotebook = demo.notebook;
-        this.activeNote = demo.note;
-        this.currentContent = demo.content;
+        await this.selectNote(demo.note);
         return;
       }
       console.info('[store] bootstrap in tauri mode');
@@ -64,8 +58,13 @@ export const useNoteStore = defineStore('note', {
       this.activeNotebook = notebook;
       if (!isTauri) {
         this.notes = this.notes.filter((n) => n.path.startsWith(`${notebook.path}/`));
-        this.activeNote = this.notes[0] ?? null;
-        this.currentContent = this.activeNote ? createWebDemoData().content : '';
+        const first = this.notes[0] ?? null;
+        if (first) {
+          await this.selectNote(first);
+        } else {
+          this.activeNote = null;
+          this.currentContent = '';
+        }
         return;
       }
       await this.loadNotes(notebook.path);
@@ -87,23 +86,18 @@ export const useNoteStore = defineStore('note', {
     },
     async selectNote(note: Note) {
       console.info('[store] selectNote', note.path);
-      saveScheduler.cancel();
+      // Flush pending writes from previous note before switching.
+      await vault.flush();
       this.activeNote = note;
-      if (!isTauri) {
-        this.currentContent = createWebDemoData().content;
-        return;
-      }
-      this.currentContent = '';
-      const content = await platformApi.readNote(note.path);
-      this.currentContent = toDisplayMarkdown(content, note.path, true);
+      // Only on switching note do we set editor content to avoid state backflow.
+      const content = await vault.openNote(note.path);
+      this.currentContent = content;
     },
     async updateContent(markdown: string) {
       console.info('[store] updateContent length', markdown?.length ?? 0);
       if (!this.activeNote) return;
-      this.currentContent = markdown;
-      if (!isTauri) return;
-      const notePath = this.activeNote.path;
-      saveScheduler.schedule(notePath, markdown, (md, path) => toRelativeMarkdown(md, path, true));
+      // Editor content is source of truth; store does not mirror live edits to avoid backflow.
+      vault.updateContent(markdown);
     },
     async createNotebook() {
       console.info('[store] createNotebook');

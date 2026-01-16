@@ -44,36 +44,6 @@ export const toRelativeMarkdown = (markdown: string, notePath: string, isTauri: 
   });
 };
 
-export const createDebouncedSave = (
-  delayMs: number,
-  saveFn: (notePath: string, content: string) => Promise<void>,
-) => {
-  let timer: number | null = null;
-  return {
-    schedule(notePath: string, markdown: string, toStorage: (md: string, path: string) => string) {
-      if (timer) {
-        clearTimeout(timer);
-      }
-      const payload = toStorage(markdown, notePath);
-      timer = window.setTimeout(async () => {
-        try {
-          await saveFn(notePath, payload);
-        } catch (error) {
-          console.error('[noteService] save failed', error);
-        } finally {
-          timer = null;
-        }
-      }, delayMs);
-    },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    },
-  };
-};
-
 const normalizePath = (path: string) => path.replace(/\\/g, '/');
 
 const withSlash = (path: string) => {
