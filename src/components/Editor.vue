@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { Milkdown, useEditor } from '@milkdown/vue';
-import { Editor, defaultValueCtx, editorViewCtx, rootCtx, schemaCtx } from '@milkdown/core';
+import {
+  Editor,
+  defaultValueCtx,
+  editorViewCtx,
+  parserCtx,
+  rootCtx,
+  schemaCtx,
+  serializerCtx,
+} from '@milkdown/core';
 import { commonmark } from '@milkdown/preset-commonmark';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { nord } from '@milkdown/theme-nord';
@@ -42,6 +50,24 @@ onMounted(() => {
     view.focus();
   });
 });
+
+watch(
+  () => props.modelValue,
+  (value) => {
+    const instance = get();
+    if (!instance) return;
+    instance.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const serializer = ctx.get(serializerCtx);
+      const parser = ctx.get(parserCtx);
+      const current = serializer(view.state.doc);
+      if (current === value) return;
+      const doc = parser(value);
+      const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content);
+      view.dispatch(tr);
+    });
+  }
+);
 
 const openFilePicker = () => {
   fileInput.value?.click();

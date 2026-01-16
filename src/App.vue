@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { MilkdownProvider } from '@milkdown/vue';
 import Editor from './components/Editor.vue';
 import { useNoteStore } from './stores/useNoteStore';
+import { isTauri } from './services/platformAdapter';
 
 const store = useNoteStore();
 
@@ -34,6 +35,10 @@ const handleSelectNotebook = (item: any) => {
 const handleSelectNote = (item: any) => {
   console.info('[ui] click note', item.path);
   store.selectNote(item);
+};
+
+const showInFinder = () => {
+  store.revealInFinder();
 };
 
 const openMenu = (event: MouseEvent, type: 'notebook' | 'note', item: any) => {
@@ -131,11 +136,12 @@ const handleKeydown = (event: KeyboardEvent) => {
 <template>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand">OneMDEditor</div>
-      <!--<div class="actions">-->
-      <!--  <button class="ghost" @click="store.createNotebook()">新建 Notebook</button>-->
-      <!--  <button class="ghost" :disabled="!activeNotebook" @click="store.createNote()">新建笔记</button>-->
-      <!--</div>-->
+      <div class="brand">
+        <span>OneMDEditor</span>
+        <button class="ghost folder" :disabled="!isTauri" @click="showInFinder">
+          在访达中显示
+        </button>
+      </div>
     </header>
     <main class="workspace">
       <aside class="panel notebooks">

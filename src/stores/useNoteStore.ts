@@ -1,15 +1,11 @@
 import { defineStore } from 'pinia';
-import { convertFileSrc, invoke } from '@tauri-apps/api/tauri';
-
-export interface Notebook {
-  name: string;
-  path: string;
-}
-
-export interface Note {
-  name: string;
-  path: string;
-}
+import { platformApi, isTauri, type Note, type Notebook } from '../services/platformAdapter';
+import {
+  createDebouncedSave,
+  createWebDemoData,
+  toDisplayMarkdown,
+  toRelativeMarkdown,
+} from '../services/noteService';
 
 interface State {
   notebooks: Notebook[];
@@ -19,15 +15,8 @@ interface State {
   currentContent: string;
 }
 
-const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_IPC__);
-const WEB_SAMPLE_NOTE = `# Web Demo
-
-非 Tauri 环境下的演示数据。
-
-- 左侧 Notebook / Note 列表
-- Milkdown 所见即所得
-- 图片功能需在 Tauri 环境运行
-`;
+const SAVE_DEBOUNCE_MS = 500;
+const saveScheduler = createDebouncedSave(SAVE_DEBOUNCE_MS, platformApi.saveNote);
 
 export const useNoteStore = defineStore('note', {
   state: (): State => ({
@@ -41,23 +30,22 @@ export const useNoteStore = defineStore('note', {
     async bootstrap() {
       if (!isTauri) {
         console.info('[store] bootstrap in web mode');
-        // Web fallback: 提供内存示例，避免 __TAURI_IPC__ 报错
-        const notebook: Notebook = { name: 'Web Demo', path: '/web/demo' };
-        const note: Note = { name: 'Welcome', path: '/web/demo/welcome' };
-        this.notebooks = [notebook];
-        this.notes = [note];
-        this.activeNotebook = notebook;
-        this.activeNote = note;
-        this.currentContent = WEB_SAMPLE_NOTE;
+        const demo = createWebDemoData();
+        this.notebooks = [demo.notebook];
+        this.notes = [demo.note];
+        this.activeNotebook = demo.notebook;
+        this.activeNote = demo.note;
+        this.currentContent = demo.content;
         return;
       }
       console.info('[store] bootstrap in tauri mode');
-      await invoke('ensure_demo_data');
+      await platformApi.ensureDemoData();
       await this.loadNotebooks();
     },
     async loadNotebooks(selectedPath?: string) {
+      if (!isTauri) return;
       console.info('[store] loadNotebooks');
-      this.notebooks = await invoke<Notebook[]>('list_notebooks');
+      this.notebooks = await platformApi.listNotebooks();
       const target =
         (selectedPath && this.notebooks.find((n) => n.path === selectedPath)) ||
         this.notebooks[0] ||
@@ -74,11 +62,18 @@ export const useNoteStore = defineStore('note', {
     async selectNotebook(notebook: Notebook) {
       console.info('[store] selectNotebook', notebook.path);
       this.activeNotebook = notebook;
+      if (!isTauri) {
+        this.notes = this.notes.filter((n) => n.path.startsWith(`${notebook.path}/`));
+        this.activeNote = this.notes[0] ?? null;
+        this.currentContent = this.activeNote ? createWebDemoData().content : '';
+        return;
+      }
       await this.loadNotes(notebook.path);
     },
     async loadNotes(notebookPath: string, selectedNotePath?: string) {
+      if (!isTauri) return;
       console.info('[store] loadNotes for', notebookPath);
-      this.notes = await invoke<Note[]>('list_notes', { notebookPath });
+      this.notes = await platformApi.listNotes(notebookPath);
       const target =
         (selectedNotePath && this.notes.find((n) => n.path === selectedNotePath)) ||
         this.notes[0] ||
@@ -92,24 +87,25 @@ export const useNoteStore = defineStore('note', {
     },
     async selectNote(note: Note) {
       console.info('[store] selectNote', note.path);
+      saveScheduler.cancel();
       this.activeNote = note;
       if (!isTauri) {
-        this.currentContent = WEB_SAMPLE_NOTE;
+        this.currentContent = createWebDemoData().content;
         return;
       }
-      const content = await invoke<string>('read_note', { notePath: note.path });
-      this.currentContent = this.toDisplayMarkdown(content, note.path);
+      this.currentContent = '';
+      const content = await platformApi.readNote(note.path);
+      this.currentContent = toDisplayMarkdown(content, note.path, true);
     },
     async updateContent(markdown: string) {
       console.info('[store] updateContent length', markdown?.length ?? 0);
       if (!this.activeNote) return;
       this.currentContent = markdown;
       if (!isTauri) return;
-      const storageContent = this.toRelativeMarkdown(markdown, this.activeNote.path);
-      await invoke('save_note', {
-        notePath: this.activeNote.path,
-        content: storageContent,
-      });
+      const notePath = this.activeNote.path;
+      saveScheduler.schedule(notePath, markdown, (md, path) =>
+        toRelativeMarkdown(md, path, true)
+      );
     },
     async createNotebook() {
       console.info('[store] createNotebook');
@@ -117,11 +113,13 @@ export const useNoteStore = defineStore('note', {
       if (!isTauri) {
         const notebook: Notebook = { name, path: `/web/${name}` };
         this.notebooks.push(notebook);
-        this.selectNotebook(notebook);
+        await this.selectNotebook(notebook);
         return;
       }
-      const notebook = await invoke<Notebook>('create_notebook', { name });
-      await this.loadNotebooks(notebook.path);
+      const notebook = await platformApi.createNotebook(name);
+      if (notebook) {
+        await this.loadNotebooks(notebook.path);
+      }
     },
     async createNote() {
       if (!this.activeNotebook) return;
@@ -130,14 +128,13 @@ export const useNoteStore = defineStore('note', {
       if (!isTauri) {
         const note: Note = { name, path: `${this.activeNotebook.path}/${name}` };
         this.notes.push(note);
-        this.selectNote(note);
+        await this.selectNote(note);
         return;
       }
-      const note = await invoke<Note>('create_note', {
-        notebookPath: this.activeNotebook.path,
-        name,
-      });
-      await this.loadNotes(this.activeNotebook.path, note.path);
+      const note = await platformApi.createNote(this.activeNotebook.path, name);
+      if (note) {
+        await this.loadNotes(this.activeNotebook.path, note.path);
+      }
     },
     async saveImage(file: File) {
       if (!this.activeNote) return '';
@@ -147,12 +144,8 @@ export const useNoteStore = defineStore('note', {
         return '';
       }
       const buffer = await file.arrayBuffer();
-      const data = Array.from(new Uint8Array(buffer));
-      const relativePath = await invoke<string>('save_image', {
-        notePath: this.activeNote.path,
-        fileName: file.name,
-        data,
-      });
+      const data = new Uint8Array(buffer);
+      const relativePath = await platformApi.saveImage(this.activeNote.path, file.name, data);
       return relativePath;
     },
     async deleteNote(note: Note) {
@@ -161,11 +154,11 @@ export const useNoteStore = defineStore('note', {
         this.notes = this.notes.filter((n) => n.path !== note.path);
         if (this.activeNote?.path === note.path) {
           this.activeNote = this.notes[0] ?? null;
-          this.currentContent = this.activeNote ? WEB_SAMPLE_NOTE : '';
+          this.currentContent = this.activeNote ? createWebDemoData().content : '';
         }
         return;
       }
-      await invoke('delete_note', { notePath: note.path });
+      await platformApi.deleteNote(note.path);
       if (this.activeNotebook) {
         await this.loadNotes(this.activeNotebook.path);
       }
@@ -185,7 +178,7 @@ export const useNoteStore = defineStore('note', {
         }
         return;
       }
-      await invoke('delete_notebook', { notebookPath: notebook.path });
+      await platformApi.deleteNotebook(notebook.path);
       await this.loadNotebooks();
     },
     async renameNotebook(notebook: Notebook, name: string) {
@@ -200,11 +193,10 @@ export const useNoteStore = defineStore('note', {
         }
         return;
       }
-      const updated = await invoke<Notebook>('rename_notebook', {
-        notebookPath: notebook.path,
-        name,
-      });
-      await this.loadNotebooks(updated.path);
+      const updated = await platformApi.renameNotebook(notebook.path, name);
+      if (updated) {
+        await this.loadNotebooks(updated.path);
+      }
     },
     async renameNote(note: Note, name: string) {
       console.info('[store] renameNote', note.path, name);
@@ -218,46 +210,23 @@ export const useNoteStore = defineStore('note', {
         }
         return;
       }
-      const updated = await invoke<Note>('rename_note', {
-        notePath: note.path,
-        name,
-      });
-      if (this.activeNotebook) {
+      const updated = await platformApi.renameNote(note.path, name);
+      if (updated && this.activeNotebook) {
         await this.loadNotes(this.activeNotebook.path, updated.path);
       }
     },
-    toDisplayMarkdown(markdown: string, notePath: string) {
-      if (!isTauri) return markdown;
-      const normalized = this.withSlash(notePath);
-      return markdown.replace(/!\[(.*?)\]\((.*?)\)/g, (_match, alt, src) => {
-        if (typeof src !== 'string') return _match;
-        if (src.startsWith('http') || src.startsWith('asset://')) return _match;
-        const absolute = this.normalizePath(`${normalized}${src}`);
-        const assetSrc = convertFileSrc(absolute);
-        return `![${alt}](${assetSrc})`;
-      });
-    },
-    toRelativeMarkdown(markdown: string, notePath: string) {
-      if (!isTauri) return markdown;
-      const normalized = this.withSlash(notePath);
-      const assetBase = this.withSlash(convertFileSrc(normalized));
-      return markdown.replace(/!\[(.*?)\]\((.*?)\)/g, (_match, alt, src) => {
-        if (typeof src !== 'string') return _match;
-        let next = src;
-        if (next.startsWith(assetBase)) {
-          next = next.slice(assetBase.length);
-        } else if (next.startsWith(normalized)) {
-          next = next.slice(normalized.length);
-        }
-        return `![${alt}](${next})`;
-      });
-    },
-    normalizePath(path: string) {
-      return path.replace(/\\/g, '/');
-    },
-    withSlash(path: string) {
-      const normalized = this.normalizePath(path);
-      return normalized.endsWith('/') ? normalized : `${normalized}/`;
+    async revealInFinder() {
+      console.info('[store] revealInFinder');
+      if (!isTauri) {
+        console.warn('[store] revealInFinder is only available in Tauri');
+        return;
+      }
+      const target = this.activeNote?.path || this.activeNotebook?.path;
+      try {
+        await platformApi.revealInFinder(target || undefined);
+      } catch (error) {
+        console.error('[store] revealInFinder failed', error);
+      }
     },
   },
 });

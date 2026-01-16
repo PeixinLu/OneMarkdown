@@ -6,7 +6,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 #[derive(Serialize, Deserialize)]
 struct Notebook {
@@ -237,6 +237,22 @@ fn rename_note(_app: AppHandle, note_path: String, name: String) -> Result<Note,
     Ok(to_note(&target).unwrap())
 }
 
+#[tauri::command]
+fn reveal_in_finder(app: AppHandle, target_path: Option<String>) -> Result<(), String> {
+    println!("[tauri] reveal_in_finder {:?}", target_path);
+    let path = if let Some(target) = target_path {
+        PathBuf::from(target)
+    } else {
+        ensure_root(&app)?
+    };
+    if !path.exists() {
+        return Err("目标路径不存在".into());
+    }
+    let canonical = path.canonicalize().unwrap_or(path);
+    let display_path = canonical.to_string_lossy().to_string();
+    tauri::api::shell::open(&app.shell_scope(), display_path, None).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
@@ -251,7 +267,8 @@ fn main() {
             delete_note,
             delete_notebook,
             rename_notebook,
-            rename_note
+            rename_note,
+            reveal_in_finder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
